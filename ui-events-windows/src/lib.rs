@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! This crate bridges the raw [Win32 API] window messages (mouse, touch, keyboard, IME, etc.)
-//! into the [`ui_events`] model.
+//! into the [`ui-events`] model.
 //!
 //! The primary entry point is [`EventReducer`].
 //!
@@ -21,6 +21,8 @@
 //!   - It calls `TrackMouseEvent` on mouse enter so that `WM_MOUSELEAVE` is delivered.
 //!   - It calls `SetCapture`/`ReleaseCapture` around button presses so that a drag that leaves
 //!     the window still delivers its button-up.
+//!
+//! [`ui-events`]: https://docs.rs/ui-events/
 
 // LINEBENDER LINT SET - lib.rs - v3
 // See https://linebender.org/wiki/canonical-lints/
@@ -31,7 +33,10 @@
 // Targeting e.g. 32-bit means structs containing usize can give false positives for 64-bit.
 #![cfg_attr(target_pointer_width = "64", warn(clippy::trivially_copy_pass_by_ref))]
 // END LINEBENDER LINT SET
-#![expect(unsafe_code, reason = "Bridging the raw Win32 API requires FFI calls.")]
+#![cfg_attr(
+    windows,
+    expect(unsafe_code, reason = "Bridging the raw Win32 API requires FFI calls.")
+)]
 
 #[cfg(windows)]
 pub mod keyboard;
@@ -45,3 +50,17 @@ mod reducer;
 
 #[cfg(windows)]
 pub use reducer::{Event, EventReducer};
+
+#[cfg(not(windows))]
+pub use dummy::EventReducer;
+
+#[cfg(not(windows))]
+mod dummy {
+    /// Dummy type.
+    #[derive(Debug)]
+    pub struct EventReducer {}
+    impl EventReducer {
+        /// Dummy function.
+        pub fn reduce() {}
+    }
+}
