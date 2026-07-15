@@ -15,82 +15,38 @@ A library for bridging the raw [Win32 API] events into the [`ui-events`] model.
 
 <!-- We use cargo-rdme to update the README with the contents of lib.rs.
 To edit the following section, update it in lib.rs, then run:
-cargo rdme --workspace-project=ui-events --heading-base-level=0
+cargo rdme --workspace-project=ui-events-windows --heading-base-level=0
 Full documentation at https://github.com/orium/cargo-rdme -->
 
 <!-- Intra-doc links used in lib.rs should be evaluated here.
 See https://linebender.org/blog/doc-include/ for related discussion. -->
 [`ui-events`]: https://docs.rs/ui-events/
-[`ui-events-winit`]: https://docs.rs/ui-events-winit/
 [Win32 API]: https://learn.microsoft.com/en-us/windows/win32/api/
-[`winit-win32`]: https://github.com/rust-windowing/winit
-[`WindowEventReducer`]: https://docs.rs/ui-events-windows/latest/ui_events_windows/struct.WindowEventReducer.html
 <!-- cargo-rdme start -->
 
-This crate bridges the raw [Win32 API] window messages (mouse, touch,
-keyboard, IME, etc.) into the [`ui-events`] model.
+This crate bridges the raw [Win32 API] window messages (mouse, touch, keyboard, IME, etc.)
+into the [`ui-events`] model.
 
-It is a Windows-native sibling of [`ui-events-winit`]: instead of
-converting `winit`'s `WindowEvent`s, it converts the `WM_*` messages a
-`WNDPROC` receives directly, inlining the same Win32-API-to-normalized-event
-conversions that the [`winit-win32`] backend performs internally to build
-its `winit` events in the first place.
+The primary entry point is [`EventReducer`].
 
-The primary entry point is [`WindowEventReducer`].
+Call [`EventReducer::reduce`] with nanoseconds in the host clock domain so input, timers,
+frame sampling, submission timestamps, and diagnostics can share one timeline.
+The timestamp must be real monotonic nanoseconds, not milliseconds, microseconds, frame counts,
+or a constant value. Tap counting uses it for nanosecond-duration thresholds.
 
-Call [`WindowEventReducer::reduce`] with nanoseconds in the host clock
-domain so input, timers, frame sampling, submission timestamps, and
-diagnostics can share one timeline.
-The timestamp must be real monotonic nanoseconds, not milliseconds,
-microseconds, frame counts, or a constant value; tap counting uses
-nanosecond-duration thresholds.
+[`EventReducer::reduce`] returns a `Vec` of zero or more translations.
+A single raw Win32 message can produce more than one normalized event (for example,
+the first `WM_MOUSEMOVE` after the cursor entered the window produces a synthetic
+`PointerEvent::Enter` followed by the `Move`, and a single `WM_TOUCH` message can carry
+more than one simultaneous touch point).
 
-Unlike [`ui-events-winit`]'s reducer, [`WindowEventReducer::reduce`] here
-returns a `Vec` of zero or more translations rather than a single
-`Option`: a single raw Win32 message can legitimately produce more than
-one normalized event (for example, the first `WM_MOUSEMOVE` after the
-cursor entered the window produces a synthetic `PointerEvent::Enter`
-followed by the `Move`, and a single `WM_TOUCH` message can carry more
-than one simultaneous touch point).
+This crate also handles some side-effecting Win32 calls:
 
-This crate also takes on a few side-effecting Win32 calls that `winit`'s
-windowing layer would otherwise be responsible for, since there is no
-such layer here: it calls `TrackMouseEvent` so that `WM_MOUSELEAVE` is
-delivered, and it calls `SetCapture`/`ReleaseCapture` around button
-presses so that a drag that leaves the window still delivers its button-up.
-
-All of this crate's functionality requires the `windows` target family;
-on any other target, this crate still compiles, but is empty, the same
-way `ui-events-appkit`'s `objc2`-dependent items are gated to
-`target_os = "macos"`.
-
-[`ui-events`]: https://docs.rs/ui-events/
-[`ui-events-winit`]: https://docs.rs/ui-events-winit/
-[Win32 API]: https://learn.microsoft.com/en-us/windows/win32/api/
-[`winit-win32`]: https://github.com/rust-windowing/winit
+- It calls `TrackMouseEvent` on mouse enter so that `WM_MOUSELEAVE` is delivered.
+- It calls `SetCapture`/`ReleaseCapture` around button presses so that a drag that leaves
+    the window still delivers its button-up.
 
 <!-- cargo-rdme end -->
-
-## Fidelity relative to `winit-win32`
-
-This crate inlines the scancode-to-[`Code`], virtual-key-to-[`NamedKey`],
-button, and IME-composition-string conversions straight from `winit-win32`'s
-internals, but it deliberately simplifies a few things that would otherwise
-require carrying along much more of `winit`'s windowing-layer state machine:
-
-- Logical-key character resolution calls `ToUnicode` directly per
-  `WM_KEYDOWN`/`WM_KEYUP`, rather than reproducing `winit`'s
-  `PeekMessage`-driven `WM_KEYDOWN`/`WM_DEADCHAR`/`WM_CHAR` sequencing used to
-  combine dead keys with the keystroke that follows them.
-- Mouse-wheel line/character counts always use the Windows default of three
-  lines per notch, rather than respecting the user's "Mouse Properties" wheel
-  speed via `SystemParametersInfoW`.
-- Mouse capture during a button drag is acquired and released per up/down
-  message rather than reference-counted across multiple simultaneously held
-  buttons.
-
-[`Code`]: https://docs.rs/ui-events/latest/ui_events/keyboard/enum.Code.html
-[`NamedKey`]: https://docs.rs/ui-events/latest/ui_events/keyboard/enum.NamedKey.html
 
 ## Minimum supported Rust Version (MSRV)
 
